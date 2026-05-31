@@ -1,7 +1,8 @@
+require("dotenv").config();
 require("@nomicfoundation/hardhat-ethers");
 
 const ARBITRUM_SEPOLIA_RPC_URL =
-  process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://sepolia-rollup.arbitrum.io/rpc";
+  process.env.ARBITRUM_SEPOLIA_RPC_URL || "https://api.zan.top/arb-sepolia";
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "";
 
 /** @type {import("hardhat/config").HardhatUserConfig} */

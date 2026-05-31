@@ -33,7 +33,7 @@ Create `.env.local` from `.env.example` and add a WalletConnect project ID for p
 Set these values in `.env` or your shell:
 
 ```bash
-ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+ARBITRUM_SEPOLIA_RPC_URL=https://api.zan.top/arb-sepolia
 DEPLOYER_PRIVATE_KEY=your_private_key
 ```
 
@@ -47,6 +47,12 @@ Copy the deployed address into:
 
 ```bash
 NEXT_PUBLIC_AGENTVAULT_ADDRESS=0x...
+```
+
+Current Arbitrum Sepolia deployment:
+
+```txt
+0x153875BF8E4d52e50907f3D065aA3bDa1Aa2648C
 ```
 
 ## Arbitrum Direction

@@ -16,6 +16,63 @@ export const demoAction = {
 
 export const agentVaultAbi = [
   {
+    type: "event",
+    name: "AgentUpdated",
+    inputs: [
+      { name: "agent", type: "address", indexed: true },
+      { name: "approved", type: "bool", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "RecipientUpdated",
+    inputs: [
+      { name: "recipient", type: "address", indexed: true },
+      { name: "approved", type: "bool", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "PolicyUpdated",
+    inputs: [
+      { name: "dailySpendLimit", type: "uint256", indexed: false },
+      { name: "approvalThreshold", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ActionProposed",
+    inputs: [
+      { name: "actionId", type: "uint256", indexed: true },
+      { name: "agent", type: "address", indexed: true },
+      { name: "recipient", type: "address", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ActionApproved",
+    inputs: [{ name: "actionId", type: "uint256", indexed: true }],
+  },
+  {
+    type: "event",
+    name: "ActionExecuted",
+    inputs: [{ name: "actionId", type: "uint256", indexed: true }],
+  },
+  {
+    type: "event",
+    name: "ActionBlocked",
+    inputs: [
+      { name: "actionId", type: "uint256", indexed: true },
+      { name: "reason", type: "string", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ActionRejected",
+    inputs: [{ name: "actionId", type: "uint256", indexed: true }],
+  },
+  {
     type: "function",
     name: "owner",
     stateMutability: "view",

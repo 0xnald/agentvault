@@ -15,16 +15,18 @@ import {
   WalletCards,
 } from "lucide-react";
 import Image from "next/image";
+import { useCallback, useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import {
   useAccount,
   useChainId,
+  usePublicClient,
   useReadContract,
   useSwitchChain,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
+import { agentVaultArbitrumSepolia } from "../lib/chains";
 import {
   agentVaultAbi,
   agentVaultAddress,
@@ -52,6 +54,24 @@ type Metric = {
   hint: string;
   icon: LucideIcon;
 };
+
+type AuditEvent = {
+  blockNumber: bigint;
+  eventName: string;
+  message: string;
+  transactionHash: string;
+};
+
+const eventNames = [
+  "AgentUpdated",
+  "RecipientUpdated",
+  "PolicyUpdated",
+  "ActionProposed",
+  "ActionApproved",
+  "ActionExecuted",
+  "ActionBlocked",
+  "ActionRejected",
+] as const;
 
 const actionCards: ActionCard[] = [
   {
@@ -124,11 +144,15 @@ export default function Home() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
+  const publicClient = usePublicClient({ chainId: agentVaultArbitrumSepolia.id });
   const { data: hash, error: writeError, isPending, writeContract } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
-  const isArbitrumSepolia = chainId === arbitrumSepolia.id;
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditError, setAuditError] = useState<string>();
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const isArbitrumSepolia = chainId === agentVaultArbitrumSepolia.id;
   const hasContract = Boolean(agentVaultAddress);
   const canUseVault = isConnected && isArbitrumSepolia && hasContract;
 
@@ -268,6 +292,56 @@ export default function Home() {
     });
   };
 
+  const loadAuditEvents = useCallback(async () => {
+    if (!agentVaultAddress || !publicClient) return;
+
+    setIsLoadingAudit(true);
+    setAuditError(undefined);
+
+    try {
+      const latestBlock = await publicClient.getBlockNumber();
+      const configuredStartBlock = getConfiguredStartBlock();
+      const fromBlock =
+        configuredStartBlock ?? (latestBlock > 100_000n ? latestBlock - 100_000n : 0n);
+
+      const eventGroups = await Promise.all(
+        eventNames.map((eventName) =>
+          publicClient.getContractEvents({
+            address: agentVaultAddress,
+            abi: agentVaultAbi,
+            eventName,
+            fromBlock,
+            toBlock: "latest",
+          }),
+        ),
+      );
+
+      const nextEvents = eventGroups
+        .flat()
+        .map((log) => {
+          const args = log.args as Record<string, unknown>;
+          return {
+            blockNumber: log.blockNumber ?? 0n,
+            eventName: log.eventName ?? "ContractEvent",
+            message: formatAuditEvent(log.eventName ?? "ContractEvent", args),
+            transactionHash: log.transactionHash ?? "",
+          };
+        })
+        .sort((a, b) => Number(b.blockNumber - a.blockNumber))
+        .slice(0, 8);
+
+      setAuditEvents(nextEvents);
+    } catch (error) {
+      setAuditError(error instanceof Error ? error.message : "Could not load audit events.");
+    } finally {
+      setIsLoadingAudit(false);
+    }
+  }, [publicClient]);
+
+  useEffect(() => {
+    void loadAuditEvents();
+  }, [loadAuditEvents, isConfirmed]);
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -302,7 +376,7 @@ export default function Home() {
               <button
                 className="switch-button"
                 type="button"
-                onClick={() => switchChain({ chainId: arbitrumSepolia.id })}
+                onClick={() => switchChain({ chainId: agentVaultArbitrumSepolia.id })}
               >
                 Switch to Arbitrum
               </button>
@@ -449,6 +523,35 @@ export default function Home() {
             </ul>
 
             <div className="audit-box">
+              <div className="audit-heading">
+                <p className="eyebrow">Onchain audit</p>
+                <button type="button" onClick={() => void loadAuditEvents()}>
+                  Refresh
+                </button>
+              </div>
+              <ol>
+                {auditEvents.length > 0 ? (
+                  auditEvents.map((event) => (
+                    <li key={`${event.transactionHash}-${event.eventName}-${event.blockNumber}`}>
+                      <span>{event.eventName}</span>
+                      <div>
+                        {event.message}
+                        <small>
+                          Block {event.blockNumber.toString()} · {shortAddress(event.transactionHash)}
+                        </small>
+                      </div>
+                    </li>
+                  ))
+                ) : (
+                  <li>
+                    <span>{isLoadingAudit ? "Loading" : "Empty"}</span>
+                    {auditError ?? "No AgentVault events found in the recent query window."}
+                  </li>
+                )}
+              </ol>
+            </div>
+
+            <div className="audit-box transaction-box">
               <p className="eyebrow">Transaction status</p>
               <ol>
                 <li>
@@ -516,4 +619,44 @@ function shortAddress(value?: string) {
 function formatPolicyAmount(value?: bigint) {
   if (value === undefined) return "--";
   return formatUnits(value, 0);
+}
+
+function getConfiguredStartBlock() {
+  const raw = process.env.NEXT_PUBLIC_AGENTVAULT_EVENT_START_BLOCK;
+  if (!raw) return undefined;
+
+  try {
+    return BigInt(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function formatAuditEvent(eventName: string, args: Record<string, unknown>) {
+  switch (eventName) {
+    case "AgentUpdated":
+      return `${shortAddress(String(args.agent))} ${args.approved ? "approved" : "removed"} as agent.`;
+    case "RecipientUpdated":
+      return `${shortAddress(String(args.recipient))} ${
+        args.approved ? "allowlisted" : "removed from allowlist"
+      }.`;
+    case "PolicyUpdated":
+      return `Policy set: daily ${formatPolicyAmount(args.dailySpendLimit as bigint)}, approval ${formatPolicyAmount(
+        args.approvalThreshold as bigint,
+      )}.`;
+    case "ActionProposed":
+      return `Action #${String(args.actionId)} proposed for ${shortAddress(
+        String(args.recipient),
+      )}, amount ${formatPolicyAmount(args.amount as bigint)}.`;
+    case "ActionApproved":
+      return `Action #${String(args.actionId)} approved.`;
+    case "ActionExecuted":
+      return `Action #${String(args.actionId)} executed.`;
+    case "ActionBlocked":
+      return `Action #${String(args.actionId)} blocked: ${String(args.reason)}.`;
+    case "ActionRejected":
+      return `Action #${String(args.actionId)} rejected.`;
+    default:
+      return eventName;
+  }
 }

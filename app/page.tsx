@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { formatUnits } from "viem";
+import { formatUnits, parseEventLogs } from "viem";
 import {
   useAccount,
   useChainId,
@@ -61,17 +61,6 @@ type AuditEvent = {
   message: string;
   transactionHash: string;
 };
-
-const eventNames = [
-  "AgentUpdated",
-  "RecipientUpdated",
-  "PolicyUpdated",
-  "ActionProposed",
-  "ActionApproved",
-  "ActionExecuted",
-  "ActionBlocked",
-  "ActionRejected",
-] as const;
 
 const actionCards: ActionCard[] = [
   {
@@ -162,33 +151,33 @@ export default function Home() {
     query: { enabled: hasContract },
   } as const;
 
-  const { data: owner } = useReadContract({
+  const { data: owner, refetch: refetchOwner } = useReadContract({
     ...contractQuery,
     functionName: "owner",
   });
-  const { data: dailySpendLimit } = useReadContract({
+  const { data: dailySpendLimit, refetch: refetchDailySpendLimit } = useReadContract({
     ...contractQuery,
     functionName: "dailySpendLimit",
   });
-  const { data: approvalThreshold } = useReadContract({
+  const { data: approvalThreshold, refetch: refetchApprovalThreshold } = useReadContract({
     ...contractQuery,
     functionName: "approvalThreshold",
   });
-  const { data: spentToday } = useReadContract({
+  const { data: spentToday, refetch: refetchSpentToday } = useReadContract({
     ...contractQuery,
     functionName: "spentToday",
   });
-  const { data: actionCount } = useReadContract({
+  const { data: actionCount, refetch: refetchActionCount } = useReadContract({
     ...contractQuery,
     functionName: "actionCount",
   });
-  const { data: isApprovedAgent } = useReadContract({
+  const { data: isApprovedAgent, refetch: refetchApprovedAgent } = useReadContract({
     ...contractQuery,
     functionName: "approvedAgents",
     args: address ? [address] : undefined,
     query: { enabled: hasContract && Boolean(address) },
   });
-  const { data: isDemoRecipientApproved } = useReadContract({
+  const { data: isDemoRecipientApproved, refetch: refetchDemoRecipient } = useReadContract({
     ...contractQuery,
     functionName: "approvedRecipients",
     args: [demoRecipient],
@@ -301,23 +290,18 @@ export default function Home() {
     try {
       const latestBlock = await publicClient.getBlockNumber();
       const configuredStartBlock = getConfiguredStartBlock();
-      const fromBlock =
-        configuredStartBlock ?? (latestBlock > 100_000n ? latestBlock - 100_000n : 0n);
+      const fromBlock = configuredStartBlock ?? (latestBlock > 5_000n ? latestBlock - 5_000n : 0n);
+      const logs = await publicClient.getLogs({
+        address: agentVaultAddress,
+        fromBlock,
+        toBlock: "latest",
+      });
+      const parsedLogs = parseEventLogs({
+        abi: agentVaultAbi,
+        logs,
+      });
 
-      const eventGroups = await Promise.all(
-        eventNames.map((eventName) =>
-          publicClient.getContractEvents({
-            address: agentVaultAddress,
-            abi: agentVaultAbi,
-            eventName,
-            fromBlock,
-            toBlock: "latest",
-          }),
-        ),
-      );
-
-      const nextEvents = eventGroups
-        .flat()
+      const nextEvents = parsedLogs
         .map((log) => {
           const args = log.args as Record<string, unknown>;
           return {
@@ -332,7 +316,7 @@ export default function Home() {
 
       setAuditEvents(nextEvents);
     } catch (error) {
-      setAuditError(error instanceof Error ? error.message : "Could not load audit events.");
+      setAuditError(formatAuditError(error));
     } finally {
       setIsLoadingAudit(false);
     }
@@ -341,6 +325,27 @@ export default function Home() {
   useEffect(() => {
     void loadAuditEvents();
   }, [loadAuditEvents, isConfirmed]);
+
+  useEffect(() => {
+    if (!isConfirmed) return;
+
+    void refetchOwner();
+    void refetchDailySpendLimit();
+    void refetchApprovalThreshold();
+    void refetchSpentToday();
+    void refetchActionCount();
+    void refetchApprovedAgent();
+    void refetchDemoRecipient();
+  }, [
+    isConfirmed,
+    refetchActionCount,
+    refetchApprovalThreshold,
+    refetchApprovedAgent,
+    refetchDailySpendLimit,
+    refetchDemoRecipient,
+    refetchOwner,
+    refetchSpentToday,
+  ]);
 
   return (
     <div className="app-shell">
@@ -659,4 +664,14 @@ function formatAuditEvent(eventName: string, args: Record<string, unknown>) {
     default:
       return eventName;
   }
+}
+
+function formatAuditError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Could not load audit events.";
+
+  if (message.toLowerCase().includes("limit exceeded") || message.includes("eth_getLogs")) {
+    return "RPC log limit reached. Set NEXT_PUBLIC_AGENTVAULT_EVENT_START_BLOCK to the deployment block, or use a personal RPC with higher limits.";
+  }
+
+  return message;
 }

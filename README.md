@@ -55,6 +55,12 @@ Current Arbitrum Sepolia deployment:
 0x153875BF8E4d52e50907f3D065aA3bDa1Aa2648C
 ```
 
+Current Arbitrum One deployment:
+
+```txt
+0x153875BF8E4d52e50907f3D065aA3bDa1Aa2648C
+```
+
 ## Arbitrum Direction
 
 - Deploy contracts on Arbitrum Sepolia.

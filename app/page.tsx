@@ -26,12 +26,17 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { agentVaultArbitrumSepolia } from "../lib/chains";
+import {
+  agentVaultArbitrumOne,
+  agentVaultArbitrumSepolia,
+  getSupportedAgentVaultChain,
+} from "../lib/chains";
 import {
   agentVaultAbi,
-  agentVaultAddress,
   demoAction,
   demoRecipient,
+  getAgentVaultAddress,
+  getAgentVaultEventStartBlock,
 } from "../lib/agentVault";
 
 type ActionTone = "approved" | "blocked" | "pending";
@@ -61,6 +66,16 @@ type AuditEvent = {
   message: string;
   transactionHash: string;
 };
+
+type ViewId = "command" | "vault" | "policies" | "agents" | "audit";
+
+const views: Array<{ id: ViewId; label: string }> = [
+  { id: "command", label: "Command" },
+  { id: "vault", label: "Vault" },
+  { id: "policies", label: "Policies" },
+  { id: "agents", label: "Agents" },
+  { id: "audit", label: "Audit" },
+];
 
 const actionCards: ActionCard[] = [
   {
@@ -133,7 +148,12 @@ export default function Home() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const publicClient = usePublicClient({ chainId: agentVaultArbitrumSepolia.id });
+  const activeChain = getSupportedAgentVaultChain(chainId);
+  const targetChain =
+    activeChain ??
+    (getAgentVaultAddress(agentVaultArbitrumOne.id) ? agentVaultArbitrumOne : agentVaultArbitrumSepolia);
+  const activeContractAddress = getAgentVaultAddress(chainId);
+  const publicClient = usePublicClient({ chainId: targetChain.id });
   const { data: hash, error: writeError, isPending, writeContract } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
@@ -141,12 +161,13 @@ export default function Home() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [auditError, setAuditError] = useState<string>();
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
-  const isArbitrumSepolia = chainId === agentVaultArbitrumSepolia.id;
-  const hasContract = Boolean(agentVaultAddress);
-  const canUseVault = isConnected && isArbitrumSepolia && hasContract;
+  const [activeView, setActiveView] = useState<ViewId>("command");
+  const isSupportedNetwork = Boolean(activeChain);
+  const hasContract = Boolean(activeContractAddress);
+  const canUseVault = isConnected && isSupportedNetwork && hasContract;
 
   const contractQuery = {
-    address: agentVaultAddress,
+    address: activeContractAddress,
     abi: agentVaultAbi,
     query: { enabled: hasContract },
   } as const;
@@ -192,7 +213,7 @@ export default function Home() {
     {
       label: "Vault Contract",
       value: hasContract ? "Connected" : "Not deployed",
-      hint: hasContract ? shortAddress(agentVaultAddress) : "Set NEXT_PUBLIC_AGENTVAULT_ADDRESS",
+      hint: hasContract ? shortAddress(activeContractAddress) : `Deploy on ${targetChain.name}`,
       icon: WalletCards,
     },
     {
@@ -216,9 +237,9 @@ export default function Home() {
   ];
 
   const setSelfAsAgent = () => {
-    if (!agentVaultAddress || !address) return;
+    if (!activeContractAddress || !address) return;
     writeContract({
-      address: agentVaultAddress,
+      address: activeContractAddress,
       abi: agentVaultAbi,
       functionName: "setAgent",
       args: [address, true],
@@ -226,9 +247,9 @@ export default function Home() {
   };
 
   const allowDemoRecipient = (approved: boolean) => {
-    if (!agentVaultAddress) return;
+    if (!activeContractAddress) return;
     writeContract({
-      address: agentVaultAddress,
+      address: activeContractAddress,
       abi: agentVaultAbi,
       functionName: "setRecipient",
       args: [demoRecipient, approved],
@@ -236,9 +257,9 @@ export default function Home() {
   };
 
   const proposeDemoAction = () => {
-    if (!agentVaultAddress) return;
+    if (!activeContractAddress) return;
     writeContract({
-      address: agentVaultAddress,
+      address: activeContractAddress,
       abi: agentVaultAbi,
       functionName: "proposeAction",
       args: [
@@ -252,9 +273,9 @@ export default function Home() {
   };
 
   const approveAction = (actionId: bigint) => {
-    if (!agentVaultAddress) return;
+    if (!activeContractAddress) return;
     writeContract({
-      address: agentVaultAddress,
+      address: activeContractAddress,
       abi: agentVaultAbi,
       functionName: "approveAction",
       args: [actionId],
@@ -262,9 +283,9 @@ export default function Home() {
   };
 
   const rejectAction = (actionId: bigint) => {
-    if (!agentVaultAddress) return;
+    if (!activeContractAddress) return;
     writeContract({
-      address: agentVaultAddress,
+      address: activeContractAddress,
       abi: agentVaultAbi,
       functionName: "rejectAction",
       args: [actionId],
@@ -272,9 +293,9 @@ export default function Home() {
   };
 
   const executeAction = (actionId: bigint) => {
-    if (!agentVaultAddress) return;
+    if (!activeContractAddress) return;
     writeContract({
-      address: agentVaultAddress,
+      address: activeContractAddress,
       abi: agentVaultAbi,
       functionName: "executeAction",
       args: [actionId],
@@ -282,17 +303,17 @@ export default function Home() {
   };
 
   const loadAuditEvents = useCallback(async () => {
-    if (!agentVaultAddress || !publicClient) return;
+    if (!activeContractAddress || !publicClient) return;
 
     setIsLoadingAudit(true);
     setAuditError(undefined);
 
     try {
       const latestBlock = await publicClient.getBlockNumber();
-      const configuredStartBlock = getConfiguredStartBlock();
+      const configuredStartBlock = getAgentVaultEventStartBlock(targetChain.id);
       const fromBlock = configuredStartBlock ?? (latestBlock > 5_000n ? latestBlock - 5_000n : 0n);
       const logs = await publicClient.getLogs({
-        address: agentVaultAddress,
+        address: activeContractAddress,
         fromBlock,
         toBlock: "latest",
       });
@@ -320,11 +341,13 @@ export default function Home() {
     } finally {
       setIsLoadingAudit(false);
     }
-  }, [publicClient]);
+  }, [activeContractAddress, publicClient, targetChain.id]);
 
   useEffect(() => {
-    void loadAuditEvents();
-  }, [loadAuditEvents, isConfirmed]);
+    if (isConfirmed || activeView === "audit") {
+      void loadAuditEvents();
+    }
+  }, [activeView, loadAuditEvents, isConfirmed]);
 
   useEffect(() => {
     if (!isConfirmed) return;
@@ -356,16 +379,21 @@ export default function Home() {
         </a>
 
         <nav className="nav-list" aria-label="Primary">
-          <a className="active" href="#">Command</a>
-          <a href="#">Vault</a>
-          <a href="#">Policies</a>
-          <a href="#">Agents</a>
-          <a href="#">Audit</a>
+          {views.map((view) => (
+            <button
+              className={activeView === view.id ? "active" : ""}
+              key={view.id}
+              type="button"
+              onClick={() => setActiveView(view.id)}
+            >
+              {view.label}
+            </button>
+          ))}
         </nav>
 
-        <div className={`network-pill ${isArbitrumSepolia ? "online" : "warning"}`}>
+        <div className={`network-pill ${isSupportedNetwork ? "online" : "warning"}`}>
           <span className="status-dot" />
-          {isArbitrumSepolia ? "Arbitrum Sepolia" : "Wrong network"}
+          {activeChain?.name ?? "Wrong network"}
         </div>
       </aside>
 
@@ -377,13 +405,13 @@ export default function Home() {
           </div>
           <div className="wallet-area">
             <ConnectButton />
-            {isConnected && !isArbitrumSepolia ? (
+            {isConnected && !isSupportedNetwork ? (
               <button
                 className="switch-button"
                 type="button"
-                onClick={() => switchChain({ chainId: agentVaultArbitrumSepolia.id })}
+                onClick={() => switchChain({ chainId: targetChain.id })}
               >
-                Switch to Arbitrum
+                Switch to {targetChain.name}
               </button>
             ) : null}
           </div>
@@ -402,7 +430,18 @@ export default function Home() {
           ))}
         </section>
 
-        <section className="content-grid">
+        {activeView === "command" ? <CommandView /> : null}
+        {activeView === "vault" ? <VaultView /> : null}
+        {activeView === "policies" ? <PoliciesView /> : null}
+        {activeView === "agents" ? <AgentsView /> : null}
+        {activeView === "audit" ? <AuditView /> : null}
+      </main>
+    </div>
+  );
+
+  function CommandView() {
+    return (
+      <section className="content-grid">
           <div className="action-panel">
             <div className="section-heading">
               <div>
@@ -412,7 +451,7 @@ export default function Home() {
               <button
                 className="secondary-button"
                 type="button"
-                disabled={!connectedOwner || !address || isPending || isConfirming}
+                disabled={!canUseVault || !address || isPending || isConfirming}
                 onClick={setSelfAsAgent}
               >
                 <ShieldCheck size={17} />
@@ -425,7 +464,7 @@ export default function Home() {
               <span>
                 {hasContract
                   ? `Owner ${owner ? shortAddress(owner) : "loading"} controls policy.`
-                  : "Deploy AgentVault and set NEXT_PUBLIC_AGENTVAULT_ADDRESS before sending transactions."}
+                  : `Deploy AgentVault on ${targetChain.name} and set its address before sending transactions.`}
               </span>
             </div>
 
@@ -550,7 +589,7 @@ export default function Home() {
                 ) : (
                   <li>
                     <span>{isLoadingAudit ? "Loading" : "Empty"}</span>
-                    {auditError ?? "No AgentVault events found in the recent query window."}
+                    {auditError ?? "No AgentVault events found yet. Run an action, then refresh."}
                   </li>
                 )}
               </ol>
@@ -583,7 +622,7 @@ export default function Home() {
             <div className="vault-controls">
               <button
                 type="button"
-                disabled={!connectedOwner || isPending || isConfirming}
+                disabled={!canUseVault || isPending || isConfirming}
                 onClick={() => allowDemoRecipient(true)}
               >
                 Allow Demo Recipient
@@ -605,15 +644,143 @@ export default function Home() {
               <Activity size={18} />
               <span>
                 Contract target:{" "}
-                {agentVaultAddress ? shortAddress(agentVaultAddress) : "deploy to Arbitrum Sepolia"}
+                {activeContractAddress ? shortAddress(activeContractAddress) : `deploy to ${targetChain.name}`}
               </span>
               <CheckCircle2 size={18} />
             </div>
           </aside>
         </section>
-      </main>
-    </div>
-  );
+    );
+  }
+
+  function VaultView() {
+    return (
+      <section className="single-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Vault</p>
+            <h2>Contract State</h2>
+          </div>
+        </div>
+        <div className="detail-grid">
+          <Detail label="Contract" value={activeContractAddress ? shortAddress(activeContractAddress) : "Not deployed"} />
+          <Detail label="Owner" value={owner ? shortAddress(owner) : "Loading"} />
+          <Detail label="Actions proposed" value={actionCount?.toString() ?? "0"} />
+          <Detail label="Connected wallet" value={address ? shortAddress(address) : "Not connected"} />
+        </div>
+      </section>
+    );
+  }
+
+  function PoliciesView() {
+    return (
+      <section className="single-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Policies</p>
+            <h2>Guardrails</h2>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!canUseVault || isPending || isConfirming}
+            onClick={() => allowDemoRecipient(true)}
+          >
+            <ShieldCheck size={17} />
+            Allow Demo Recipient
+          </button>
+        </div>
+        <div className="detail-grid">
+          <Detail label="Daily spend cap" value={formatPolicyAmount(dailySpendLimit)} />
+          <Detail label="Human approval above" value={formatPolicyAmount(approvalThreshold)} />
+          <Detail label="Spent today" value={formatPolicyAmount(spentToday)} />
+          <Detail label="Demo recipient" value={isDemoRecipientApproved ? "Allowlisted" : "Blocked"} />
+        </div>
+      </section>
+    );
+  }
+
+  function AgentsView() {
+    return (
+      <section className="single-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Agents</p>
+            <h2>Finance Operator</h2>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!canUseVault || !address || isPending || isConfirming}
+            onClick={setSelfAsAgent}
+          >
+            <ShieldCheck size={17} />
+            Approve Wallet As Agent
+          </button>
+        </div>
+        <div className="detail-grid">
+          <Detail label="Connected wallet" value={address ? shortAddress(address) : "Not connected"} />
+          <Detail label="Agent status" value={isApprovedAgent ? "Approved" : "Not approved"} />
+          <Detail label="Vault owner" value={connectedOwner ? "Connected wallet" : owner ? shortAddress(owner) : "Loading"} />
+          <Detail label="Permissions" value="Can propose payments, reserves, and vendor actions" />
+        </div>
+      </section>
+    );
+  }
+
+  function AuditView() {
+    return (
+      <section className="single-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Audit</p>
+            <h2>Onchain History</h2>
+          </div>
+          <button className="secondary-button" type="button" onClick={() => void loadAuditEvents()}>
+            <Activity size={17} />
+            Refresh
+          </button>
+        </div>
+        <AuditList />
+      </section>
+    );
+  }
+
+  function AuditList() {
+    return (
+      <div className="audit-box wide-audit">
+        <ol>
+          {auditEvents.length > 0 ? (
+            auditEvents.map((event) => (
+              <li key={`${event.transactionHash}-${event.eventName}-${event.blockNumber}`}>
+                <span>{event.eventName}</span>
+                <div>
+                  {event.message}
+                  <small>
+                    Block {event.blockNumber.toString()} · {shortAddress(event.transactionHash)}
+                  </small>
+                </div>
+              </li>
+            ))
+          ) : (
+            <li>
+              <span>{isLoadingAudit ? "Loading" : "Empty"}</span>
+              {auditError ?? "No AgentVault events found yet. Run an action, then refresh."}
+            </li>
+          )}
+        </ol>
+      </div>
+    );
+  }
+
+  function Detail({ label, value }: { label: string; value: string }) {
+    return (
+      <article className="detail-card">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </article>
+    );
+  }
 }
 
 function shortAddress(value?: string) {
@@ -624,17 +791,6 @@ function shortAddress(value?: string) {
 function formatPolicyAmount(value?: bigint) {
   if (value === undefined) return "--";
   return formatUnits(value, 0);
-}
-
-function getConfiguredStartBlock() {
-  const raw = process.env.NEXT_PUBLIC_AGENTVAULT_EVENT_START_BLOCK;
-  if (!raw) return undefined;
-
-  try {
-    return BigInt(raw);
-  } catch {
-    return undefined;
-  }
 }
 
 function formatAuditEvent(eventName: string, args: Record<string, unknown>) {
@@ -670,7 +826,7 @@ function formatAuditError(error: unknown) {
   const message = error instanceof Error ? error.message : "Could not load audit events.";
 
   if (message.toLowerCase().includes("limit exceeded") || message.includes("eth_getLogs")) {
-    return "RPC log limit reached. Set NEXT_PUBLIC_AGENTVAULT_EVENT_START_BLOCK to the deployment block, or use a personal RPC with higher limits.";
+    return "Audit history could not load because the RPC limited log queries. The transaction may still be confirmed; try Refresh or use a higher-limit RPC.";
   }
 
   return message;

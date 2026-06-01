@@ -80,14 +80,17 @@ button:disabled {
   gap: 8px;
 }
 
-.nav-list a {
+.nav-list button {
+  border: 0;
   color: var(--muted);
+  background: transparent;
   text-decoration: none;
   padding: 11px 12px;
   border-radius: 8px;
+  text-align: left;
 }
 
-.nav-list a:hover,
+.nav-list button:hover,
 .nav-list .active {
   color: var(--text);
   background: var(--panel-strong);
@@ -267,6 +270,39 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 18px;
+}
+
+.single-panel {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detail-card {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #15181b;
+}
+
+.detail-card span {
+  color: var(--muted);
+}
+
+.detail-card strong {
+  overflow-wrap: anywhere;
+  font-size: 20px;
 }
 
 .action-panel,
@@ -460,6 +496,10 @@ h3 {
   margin-top: 16px;
 }
 
+.wide-audit {
+  margin-top: 8px;
+}
+
 .transaction-box span {
   width: 48px;
 }
@@ -534,6 +574,10 @@ h3 {
   .metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {
@@ -555,6 +599,10 @@ h3 {
   }
 
   .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 

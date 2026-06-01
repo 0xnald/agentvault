@@ -9,6 +9,7 @@
     "compile": "hardhat compile",
     "test:contracts": "hardhat test",
     "deploy": "hardhat run scripts/deploy.cjs --network arbitrumSepolia",
+    "deploy:arbitrum-one": "hardhat run scripts/deploy.cjs --network arbitrumOne",
     "deploy:arbitrum-sepolia": "hardhat run scripts/deploy.cjs --network arbitrumSepolia"
   },
   "dependencies": {

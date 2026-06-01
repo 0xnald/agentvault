@@ -5,7 +5,12 @@ import { RainbowKitProvider, darkTheme, getDefaultConfig } from "@rainbow-me/rai
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PropsWithChildren, useState } from "react";
 import { http, WagmiProvider } from "wagmi";
-import { agentVaultArbitrumSepolia, arbitrumSepoliaRpcUrl } from "../lib/chains";
+import {
+  agentVaultArbitrumOne,
+  agentVaultArbitrumSepolia,
+  arbitrumOneRpcUrl,
+  arbitrumSepoliaRpcUrl,
+} from "../lib/chains";
 
 const walletConnectProjectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "agentvault-local-demo";
@@ -13,9 +18,10 @@ const walletConnectProjectId =
 const config = getDefaultConfig({
   appName: "AgentVault",
   projectId: walletConnectProjectId,
-  chains: [agentVaultArbitrumSepolia],
+  chains: [agentVaultArbitrumSepolia, agentVaultArbitrumOne],
   transports: {
     [agentVaultArbitrumSepolia.id]: http(arbitrumSepoliaRpcUrl),
+    [agentVaultArbitrumOne.id]: http(arbitrumOneRpcUrl),
   },
   ssr: true,
 });

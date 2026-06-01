@@ -3,6 +3,34 @@ import { parseUnits, zeroAddress } from "viem";
 export const agentVaultAddress = process.env.NEXT_PUBLIC_AGENTVAULT_ADDRESS as
   | `0x${string}`
   | undefined;
+export const agentVaultSepoliaAddress = (
+  process.env.NEXT_PUBLIC_AGENTVAULT_SEPOLIA_ADDRESS ||
+  process.env.NEXT_PUBLIC_AGENTVAULT_ADDRESS
+) as `0x${string}` | undefined;
+export const agentVaultArbitrumOneAddress = process.env
+  .NEXT_PUBLIC_AGENTVAULT_ARBITRUM_ONE_ADDRESS as `0x${string}` | undefined;
+
+export function getAgentVaultAddress(chainId?: number) {
+  if (chainId === 421614) return agentVaultSepoliaAddress;
+  if (chainId === 42161) return agentVaultArbitrumOneAddress;
+  return undefined;
+}
+
+export function getAgentVaultEventStartBlock(chainId?: number) {
+  const raw =
+    chainId === 42161
+      ? process.env.NEXT_PUBLIC_AGENTVAULT_ARBITRUM_ONE_EVENT_START_BLOCK
+      : process.env.NEXT_PUBLIC_AGENTVAULT_SEPOLIA_EVENT_START_BLOCK ||
+        process.env.NEXT_PUBLIC_AGENTVAULT_EVENT_START_BLOCK;
+
+  if (!raw) return undefined;
+
+  try {
+    return BigInt(raw);
+  } catch {
+    return undefined;
+  }
+}
 
 export const demoRecipient = "0x1111111111111111111111111111111111111111" as const;
 
